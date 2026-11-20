@@ -1,0 +1,34 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Build products
+/build/
+DerivedData/
+*.app/
+*.dSYM/
+*.xcarchive/
+*.xcodeproj
+*.xcuserstate
+xcuserdata/
+
+# macOS metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Local editor settings
+/.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local database files and generated exports
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+/dc-dr-map.html
+/dc-dr-links.csv
