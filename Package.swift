@@ -10,7 +10,9 @@ let package = Package(
             path: "Sources/DCMap",
             resources: [
                 .copy("Resources/d3.v7.min.js"),
-                .copy("Resources/D3-LICENSE.txt")
+                .copy("Resources/D3-LICENSE.txt"),
+                .copy("Resources/xlsx.full.min.js"),
+                .copy("Resources/SheetJS-LICENSE.txt")
             ],
             linkerSettings: [.linkedLibrary("sqlite3")]
         )

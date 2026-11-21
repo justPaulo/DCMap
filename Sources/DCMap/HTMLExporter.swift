@@ -23,9 +23,17 @@ enum HTMLExporter {
         guard let licenseURL = Bundle.module.url(forResource: "D3-LICENSE", withExtension: "txt") else {
             throw HTMLExportError.missingResource("D3.js license")
         }
+        guard let xlsxURL = Bundle.module.url(forResource: "xlsx.full.min", withExtension: "js") else {
+            throw HTMLExportError.missingResource("SheetJS")
+        }
+        guard let xlsxLicenseURL = Bundle.module.url(forResource: "SheetJS-LICENSE", withExtension: "txt") else {
+            throw HTMLExportError.missingResource("SheetJS license")
+        }
 
         let d3 = try String(contentsOf: d3URL, encoding: .utf8)
         let license = try String(contentsOf: licenseURL, encoding: .utf8)
+        let xlsx = try String(contentsOf: xlsxURL, encoding: .utf8)
+        let xlsxLicense = try String(contentsOf: xlsxLicenseURL, encoding: .utf8)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let snapshotJSON = try encoder.encode(snapshot)
@@ -221,6 +229,9 @@ enum HTMLExporter {
               gap: 0.35rem;
             }
             .map-actions button { min-width: 2.4rem; min-height: 2.4rem; padding: 0.35rem; font-size: 0.85rem; }
+            .header-controls { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.65rem; }
+            #load-file { display: none; }
+            #load-status { color: var(--cp-text-muted); font-size: 0.75rem; }
             .map-status {
               position: absolute;
               right: 0.75rem;
@@ -264,6 +275,8 @@ enum HTMLExporter {
               stroke-dasharray: 6 6;
               opacity: 1;
               cursor: pointer;
+            }
+            .replication-link .route-path {
               vector-effect: non-scaling-stroke;
             }
             .replication-link:hover, .replication-link.selected {
@@ -372,6 +385,12 @@ enum HTMLExporter {
             <div>
               <h1>DC &amp; DR Topology</h1>
               <p class="subtitle" id="exported-at"></p>
+              <div class="header-controls">
+                <button id="load-data" type="button">Load .xlsx / .csv</button>
+                <input id="load-file" type="file" accept=".xlsx,.xlsm,.csv,.tsv,.txt">
+                <button id="theme-toggle" type="button" title="Switch between light and dark themes">◐ Theme</button>
+                <span id="load-status" aria-live="polite"></span>
+              </div>
             </div>
             <div class="stats" id="stats" aria-label="Database totals"></div>
           </header>
@@ -401,10 +420,6 @@ enum HTMLExporter {
                 </div>
                 <div class="map-status" id="map-count" aria-live="polite"></div>
               </div>
-              <details>
-                <summary>Embedded database snapshot (JSON)</summary>
-                <pre id="raw-snapshot"></pre>
-              </details>
             </section>
             <aside>
               <section class="card">
@@ -425,10 +440,14 @@ enum HTMLExporter {
             </aside>
           </main>
           <footer>
-            Offline export. Natural Earth 1:50m map geometry and the complete database snapshot are embedded in this file.
+            Offline export. Natural Earth 1:50m map geometry, database snapshot, D3.js, and spreadsheet support are embedded in this file.
             <details>
               <summary>D3.js v7.9.2 license</summary>
               <pre>\#(escapeHTML(license))</pre>
+            </details>
+            <details>
+              <summary>SheetJS license</summary>
+              <pre>\#(escapeHTML(xlsxLicense))</pre>
             </details>
           </footer>
           <script type="application/json" id="database-data">\#(safeJSON(snapshotText))</script>
@@ -437,11 +456,14 @@ enum HTMLExporter {
           \#(d3)
           </script>
           <script>
+          \#(xlsx)
+          </script>
+          <script>
             (() => {
-              const database = JSON.parse(document.getElementById("database-data").textContent);
+              let database = JSON.parse(document.getElementById("database-data").textContent);
               const rawWorld = JSON.parse(document.getElementById("world-data").textContent);
-              const sitesByID = new Map(database.sites.map(site => [site.id, site]));
-              const roles = new Map(database.sites.map(site => [site.id, { dc: false, dr: false }]));
+              let sitesByID = new Map(database.sites.map(site => [site.id, site]));
+              let roles = new Map(database.sites.map(site => [site.id, { dc: false, dr: false }]));
               for (const link of database.links) {
                 if (roles.has(link.dc_site_id)) roles.get(link.dc_site_id).dc = true;
                 if (roles.has(link.dr_site_id)) roles.get(link.dr_site_id).dr = true;
@@ -451,8 +473,8 @@ enum HTMLExporter {
                 Number.isFinite(site.latitude) && Number.isFinite(site.longitude) &&
                 site.latitude >= -90 && site.latitude <= 90 &&
                 site.longitude >= -180 && site.longitude <= 180;
-              const mappedSites = database.sites.filter(isMapped);
-              const unmappedSites = database.sites.filter(site => !isMapped(site));
+              let mappedSites = database.sites.filter(isMapped);
+              let unmappedSites = database.sites.filter(site => !isMapped(site));
               const featureCollection = {
                 type: "FeatureCollection",
                 features: rawWorld.map(country => ({
@@ -495,10 +517,10 @@ enum HTMLExporter {
                 ["swaziland", "eswatini"], ["macedonia", "north macedonia"],
                 ["vietnam", "vietnam"], ["viet nam", "vietnam"]
               ]);
-              const sitesByCountry = new Set(database.sites.map(site =>
+              let sitesByCountry = new Set(database.sites.map(site =>
                 countryAliases.get(normalized(site.country)) || normalized(site.country)
               ).filter(Boolean));
-              root.append("g").selectAll("path")
+              const landSelection = root.append("g").selectAll("path")
                 .data(featureCollection.features)
                 .join("path")
                 .attr("class", feature => {
@@ -518,7 +540,7 @@ enum HTMLExporter {
               const pulsesLayer = root.append("g");
               const sitesLayer = root.append("g");
               const labelsLayer = root.append("g");
-              const sitePosition = new Map(mappedSites.map(site => [site.id, projection([site.longitude, site.latitude])]));
+              let sitePosition = new Map(mappedSites.map(site => [site.id, projection([site.longitude, site.latitude])]));
               const positionsByCoordinate = new Map();
               for (const site of mappedSites) {
                 const key = `${site.latitude},${site.longitude}`;
@@ -534,7 +556,7 @@ enum HTMLExporter {
                   sitePosition.set(id, [point[0] + Math.cos(angle) * 5, point[1] + Math.sin(angle) * 5]);
                 });
               }
-              const routeRows = database.links.map((link, index) => ({
+              let routeRows = database.links.map((link, index) => ({
                 link,
                 source: sitesByID.get(link.dc_site_id),
                 target: sitesByID.get(link.dr_site_id),
@@ -552,9 +574,9 @@ enum HTMLExporter {
                 };
               };
               const routeArrowTransform = row => {
-                const { p0, p1 } = routePoints(row);
-                const midX = (p0[0] + p1[0]) / 2;
-                const midY = (p0[1] + p1[1]) / 2;
+                const { p0, c, p1 } = routePoints(row);
+                const midX = (p0[0] + 2 * c[0] + p1[0]) / 4;
+                const midY = (p0[1] + 2 * c[1] + p1[1]) / 4;
                 const angle = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]) * 180 / Math.PI;
                 return `translate(${midX},${midY}) rotate(${angle}) scale(${1 / currentScale})`;
               };
@@ -928,36 +950,198 @@ enum HTMLExporter {
                 return message;
               }
 
-              const countByRole = role => database.sites.filter(site => roles.get(site.id)?.[role]).length;
-              const localLinks = database.links.filter(link => link.dc_site_id === link.dr_site_id).length;
-              const realLinks = database.links.length - localLinks;
-              const countries = new Set(database.sites.map(site => normalized(site.country)).filter(Boolean)).size;
-              const cities = new Set(database.sites.map(site => normalized(site.city)).filter(Boolean)).size;
-              const stats = [
-                ["Data centers", countByRole("dc")],
-                ["DR sites", countByRole("dr")],
-                ["Replication links", realLinks, localLinks ? `+${localLinks} local` : ""],
-                ["Countries", countries],
-                ["Cities", cities]
-              ];
-              for (const [label, value, note] of stats) {
-                const item = document.createElement("div");
-                item.className = "stat";
-                const number = document.createElement("strong");
-                number.textContent = value.toLocaleString();
-                const caption = document.createElement("span");
-                caption.textContent = label;
-                item.append(number, caption);
-                if (note) {
-                  const subline = document.createElement("small");
-                  subline.textContent = note;
-                  item.append(subline);
+              function renderStats() {
+                const countByRole = role => database.sites.filter(site => roles.get(site.id)?.[role]).length;
+                const localLinks = database.links.filter(link => link.dc_site_id === link.dr_site_id).length;
+                const realLinks = database.links.length - localLinks;
+                const countries = new Set(database.sites.map(site => normalized(site.country)).filter(Boolean)).size;
+                const cities = new Set(database.sites.map(site => normalized(site.city)).filter(Boolean)).size;
+                const stats = [
+                  ["Data centers", countByRole("dc")],
+                  ["DR sites", countByRole("dr")],
+                  ["Replication links", realLinks, localLinks ? `+${localLinks} local` : ""],
+                  ["Countries", countries],
+                  ["Cities", cities]
+                ];
+                const container = document.getElementById("stats");
+                container.replaceChildren();
+                for (const [label, value, note] of stats) {
+                  const item = document.createElement("div");
+                  item.className = "stat";
+                  const number = document.createElement("strong");
+                  number.textContent = value.toLocaleString();
+                  const caption = document.createElement("span");
+                  caption.textContent = label;
+                  item.append(number, caption);
+                  if (note) {
+                    const subline = document.createElement("small");
+                    subline.textContent = note;
+                    item.append(subline);
+                  }
+                  container.append(item);
                 }
-                document.getElementById("stats").append(item);
               }
+
+              function rebuildDataState() {
+                sitesByID = new Map(database.sites.map(site => [site.id, site]));
+                roles = new Map(database.sites.map(site => [site.id, { dc: false, dr: false }]));
+                for (const link of database.links) {
+                  if (roles.has(link.dc_site_id)) roles.get(link.dc_site_id).dc = true;
+                  if (roles.has(link.dr_site_id)) roles.get(link.dr_site_id).dr = true;
+                }
+                mappedSites = database.sites.filter(isMapped);
+                unmappedSites = database.sites.filter(site => !isMapped(site));
+                sitesByCountry = new Set(database.sites.map(site =>
+                  countryAliases.get(normalized(site.country)) || normalized(site.country)
+                ).filter(Boolean));
+                sitePosition = new Map(mappedSites.map(site => [site.id, projection([site.longitude, site.latitude])]));
+                const positionsByCoordinate = new Map();
+                for (const site of mappedSites) {
+                  const key = `${site.latitude},${site.longitude}`;
+                  const group = positionsByCoordinate.get(key) || [];
+                  group.push(site.id);
+                  positionsByCoordinate.set(key, group);
+                }
+                for (const ids of positionsByCoordinate.values()) {
+                  if (ids.length < 2) continue;
+                  ids.forEach((id, index) => {
+                    const angle = -Math.PI / 2 + index * 2 * Math.PI / ids.length;
+                    const point = sitePosition.get(id);
+                    sitePosition.set(id, [point[0] + Math.cos(angle) * 5, point[1] + Math.sin(angle) * 5]);
+                  });
+                }
+                routeRows = database.links.map((link, index) => ({
+                  link,
+                  source: sitesByID.get(link.dc_site_id),
+                  target: sitesByID.get(link.dr_site_id),
+                  index
+                }));
+                landSelection.attr("class", feature => {
+                  const country = normalized(feature.properties.name);
+                  const hasNamedSite = sitesByCountry.has(country);
+                  const hasLocatedSite = mappedSites.some(site =>
+                    d3.geoContains(feature, [site.longitude, site.latitude])
+                  );
+                  return `land${hasNamedSite || hasLocatedSite ? " has-site" : ""}`;
+                });
+              }
+
+              function parseImportedGrid(grid) {
+                const header = grid[0] || [];
+                const hasHeader = header.some(value => {
+                  const cell = String(value).toLowerCase();
+                  return cell === "country" || cell === "city" ||
+                    cell.includes("datacenter") || cell.includes("data center") || cell.includes("dr site");
+                });
+                const rows = [];
+                for (const raw of grid.slice(hasHeader ? 1 : 0)) {
+                  const cells = Array.from({ length: Math.max(raw.length, 10) }, (_, index) =>
+                    String(raw[index] ?? "").trim()
+                  );
+                  if (cells.slice(0, 6).every(cell => !cell)) continue;
+                  if (!cells[0] || !cells[3]) continue;
+                  rows.push(cells);
+                }
+                if (!rows.length) throw new Error("The selected file contains no usable data rows.");
+                return rows;
+              }
+
+              function importRows(rows) {
+                const timestamp = new Date().toISOString();
+                let nextSiteID = Math.max(0, ...database.sites.map(site => site.id)) + 1;
+                let nextLinkID = Math.max(0, ...database.links.map(link => link.id)) + 1;
+                const siteKeys = new Map(database.sites.map(site => [
+                  `${normalized(site.name)}|${normalized(site.city)}`, site
+                ]));
+                const linkKeys = new Set(database.links.map(link => `${link.dc_site_id}|${link.dr_site_id}`));
+                let addedSites = 0;
+                let addedLinks = 0;
+
+                const number = value => {
+                  if (value === "") return null;
+                  const parsed = Number(String(value).replace(",", "."));
+                  return Number.isFinite(parsed) ? parsed : null;
+                };
+                const upsert = (name, country, city, latitude, longitude) => {
+                  const key = `${normalized(name)}|${normalized(city)}`;
+                  const existing = siteKeys.get(key);
+                  if (existing) return existing.id;
+                  const hasCoordinates = latitude !== null && longitude !== null;
+                  const site = {
+                    id: nextSiteID++,
+                    name,
+                    country,
+                    city,
+                    latitude: hasCoordinates ? latitude : null,
+                    longitude: hasCoordinates ? longitude : null,
+                    geo_status: hasCoordinates ? "manual" : "pending",
+                    created_at: timestamp,
+                    updated_at: timestamp
+                  };
+                  database.sites.push(site);
+                  siteKeys.set(key, site);
+                  addedSites++;
+                  return site.id;
+                };
+
+                for (const cells of rows) {
+                  const dcID = upsert(cells[0], cells[1], cells[2], number(cells[6]), number(cells[7]));
+                  const drID = upsert(cells[3], cells[4], cells[5], number(cells[8]), number(cells[9]));
+                  const key = `${dcID}|${drID}`;
+                  if (linkKeys.has(key)) continue;
+                  database.links.push({
+                    id: nextLinkID++,
+                    dc_site_id: dcID,
+                    dr_site_id: drID,
+                    created_at: timestamp
+                  });
+                  linkKeys.add(key);
+                  addedLinks++;
+                }
+                database.generated_at = timestamp;
+                return { addedSites, addedLinks };
+              }
+
+              const loadFile = document.getElementById("load-file");
+              document.getElementById("load-data").addEventListener("click", () => loadFile.click());
+              loadFile.addEventListener("change", async () => {
+                const file = loadFile.files[0];
+                if (!file) return;
+                const status = document.getElementById("load-status");
+                try {
+                  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+                  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                  if (!firstSheet) throw new Error("The selected file has no worksheet.");
+                  const grid = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false, defval: "" });
+                  const rows = parseImportedGrid(grid);
+                  const result = importRows(rows);
+                  selected = null;
+                  selection.textContent = "Select a site or link on the map, or choose a link above.";
+                  rebuildDataState();
+                  renderStats();
+                  document.getElementById("exported-at").textContent =
+                    `Offline snapshot · loaded ${file.name}`;
+                  svg.transition().duration(0).call(zoom.transform, d3.zoomIdentity);
+                  updateMap();
+                  renderLists();
+                  status.textContent = `Added ${result.addedSites} site(s), ${result.addedLinks} link(s).`;
+                } catch (error) {
+                  status.textContent = `Could not load ${file.name}: ${error.message}`;
+                  console.error(error);
+                } finally {
+                  loadFile.value = "";
+                }
+              });
+
+              let currentTheme = document.documentElement.getAttribute("data-theme");
+              document.getElementById("theme-toggle").addEventListener("click", () => {
+                currentTheme = currentTheme === "dark" ? "light" : "dark";
+                document.documentElement.setAttribute("data-theme", currentTheme);
+              });
+
+              renderStats();
               document.getElementById("exported-at").textContent =
                 `Offline snapshot · exported ${database.generated_at}`;
-              document.getElementById("raw-snapshot").textContent = JSON.stringify(database, null, 2);
 
               const zoom = d3.zoom().scaleExtent([1, 80]).translateExtent([[0, 0], [width, height]]).on("zoom", event => {
                 currentScale = event.transform.k;

@@ -34,10 +34,10 @@ export can be re-imported later without any online lookup.
   searchable link list, selection details and data notes. Light and dark mode follow the system.
 * **Sites** – table with add / edit / delete, per-site online lookup, status badge (Online, Manual, Pending, Not found).
 * **Links** – table with add / edit / delete of data center → DR relationships.
-* **Export Map** – creates a single offline HTML file that follows the app's KPI/map/sidebar layout and keeps the map animations: moving replication packets, pulsing sites, animated self-DR rings, role filters, selection focus, and zoom/pan controls.
+* **Export Map** – creates a single offline HTML file that follows the app's KPI/map/sidebar layout and keeps the map animations: moving replication packets, pulsing sites, animated self-DR rings, role filters, selection focus, and zoom/pan controls. The exported map can load local `.xlsx` and `.csv` files (merging their rows into the current view) and toggle its light/dark theme.
 * **Menu** – Import, Export CSV, Export Interactive Map as HTML, Look Up Missing Coordinates (⌘L), Show Database in Finder, Delete All Data.
 
-The HTML map includes the database IDs, coordinates, geocoding status, and timestamps, including sites without coordinates. D3, Natural Earth geometry, and the complete database snapshot are embedded, so the file works offline. SheetJS is not required because the export reads the database directly and does not process spreadsheets.
+The HTML map includes the database IDs, coordinates, geocoding status, and timestamps, including sites without coordinates. D3, SheetJS, Natural Earth geometry, and the complete database snapshot are embedded, so the file and its spreadsheet loader work offline. Files loaded into the exported map are kept in memory and do not modify the app's database.
 
 Same filtering rules as the HTML version: unticking *DR site* hides the links (a link needs both ends) and the sites
 turn teal because they now only count as data centers.
