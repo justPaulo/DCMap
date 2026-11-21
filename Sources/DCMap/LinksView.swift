@@ -11,6 +11,13 @@ private struct LinkRowModel: Identifiable {
     let id: Int64
     let dc: Site
     let dr: Site
+
+    var dcLocation: String { dc.locationLabel }
+    var drLocation: String { dr.locationLabel }
+    var distanceSort: Double {
+        if dc.id == dr.id { return 0 }
+        return Fmt.km(dc, dr) ?? .infinity
+    }
 }
 
 // MARK: - Links table (create / read / update / delete)
@@ -24,10 +31,11 @@ struct LinksView: View {
     @StateCompat private var query = ""
     @StateCompat private var editing: LinkDraft?
     @StateCompat private var confirmDelete = false
+    @StateCompat private var sortOrder = [KeyPathComparator(\LinkRowModel.dc.name)]
 
     private var rows: [LinkRowModel] {
         let q = normalize(query)
-        return store.links.compactMap { l -> LinkRowModel? in
+        let matches = store.links.compactMap { l -> LinkRowModel? in
             guard let a = store.site(l.dcID), let b = store.site(l.drID) else { return nil }
             if !q.isEmpty {
                 let hay = normalize([a.name, a.city, a.country, b.name, b.city, b.country].joined(separator: " "))
@@ -35,6 +43,7 @@ struct LinksView: View {
             }
             return LinkRowModel(id: l.id, dc: a, dr: b)
         }
+        return matches.sorted(using: sortOrder)
     }
 
     var body: some View {
@@ -52,12 +61,12 @@ struct LinksView: View {
                     .disabled(selection.isEmpty)
             }
 
-            Table(rows, selection: $selection) {
-                TableColumn("Data center") { Text($0.dc.name).fontWeight(.semibold) }
-                TableColumn("DC location") { Text($0.dc.locationLabel).foregroundColor(.secondary) }
-                TableColumn("DR site") { Text($0.dr.name).fontWeight(.semibold) }
-                TableColumn("DR location") { Text($0.dr.locationLabel).foregroundColor(.secondary) }
-                TableColumn("Distance") { Text(Fmt.kmLabel($0.dc, $0.dr)) }
+            Table(rows, selection: $selection, sortOrder: $sortOrder) {
+                TableColumn("Data center", value: \.dc.name) { Text($0.dc.name).fontWeight(.semibold) }
+                TableColumn("DC location", value: \.dcLocation) { Text($0.dc.locationLabel).foregroundColor(.secondary) }
+                TableColumn("DR site", value: \.dr.name) { Text($0.dr.name).fontWeight(.semibold) }
+                TableColumn("DR location", value: \.drLocation) { Text($0.dr.locationLabel).foregroundColor(.secondary) }
+                TableColumn("Distance", value: \.distanceSort) { Text(Fmt.kmLabel($0.dc, $0.dr)) }
             }
             .tableStyle(.inset(alternatesRowBackgrounds: true))
             .contextMenu(forSelectionType: Int64.self) { ids in

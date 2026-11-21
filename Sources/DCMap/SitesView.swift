@@ -11,11 +11,19 @@ struct SitesView: View {
     @StateCompat private var query = ""
     @StateCompat private var editing: SiteDraft?
     @StateCompat private var confirmDelete = false
+    @StateCompat private var sortOrder = [KeyPathComparator(\Site.name)]
 
     private var filtered: [Site] {
         let q = normalize(query)
-        guard !q.isEmpty else { return store.sites }
-        return store.sites.filter { normalize([$0.name, $0.city, $0.country].joined(separator: " ")).contains(q) }
+        let matches: [Site]
+        if q.isEmpty {
+            matches = store.sites
+        } else {
+            matches = store.sites.filter {
+                normalize([$0.name, $0.city, $0.country].joined(separator: " ")).contains(q)
+            }
+        }
+        return matches.sorted(using: sortOrder)
     }
 
     var body: some View {
@@ -34,14 +42,14 @@ struct SitesView: View {
                     .disabled(selection.isEmpty)
             }
 
-            Table(filtered, selection: $selection) {
-                TableColumn("Name") { Text($0.name).fontWeight(.semibold) }
-                TableColumn("Country") { Text($0.country) }
-                TableColumn("City") { Text($0.city) }
-                TableColumn("Latitude") { Text(Fmt.coordShort($0.latitude)).monospacedDigit() }
-                TableColumn("Longitude") { Text(Fmt.coordShort($0.longitude)).monospacedDigit() }
-                TableColumn("Coordinates") { StatusBadge(status: $0.geoStatus) }
-                TableColumn("Role") { Text($0.roleLabel).foregroundColor(.secondary) }
+            Table(filtered, selection: $selection, sortOrder: $sortOrder) {
+                TableColumn("Name", value: \.name) { Text($0.name).fontWeight(.semibold) }
+                TableColumn("Country", value: \.country) { Text($0.country) }
+                TableColumn("City", value: \.city) { Text($0.city) }
+                TableColumn("Latitude", value: \.latitudeSort) { Text(Fmt.coordShort($0.latitude)).monospacedDigit() }
+                TableColumn("Longitude", value: \.longitudeSort) { Text(Fmt.coordShort($0.longitude)).monospacedDigit() }
+                TableColumn("Coordinates", value: \.geoStatus) { StatusBadge(status: $0.geoStatus) }
+                TableColumn("Role", value: \.roleLabel) { Text($0.roleLabel).foregroundColor(.secondary) }
             }
             .tableStyle(.inset(alternatesRowBackgrounds: true))
             .contextMenu(forSelectionType: Site.ID.self) { ids in

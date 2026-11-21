@@ -1,11 +1,15 @@
 import Foundation
 
 /// How a site's coordinates were obtained.
-enum GeoStatus: String {
+enum GeoStatus: String, Comparable {
     case pending   // not looked up yet
     case ok        // found online
     case manual    // typed in / imported with the file
     case failed    // online lookup found nothing or failed
+
+    static func < (lhs: GeoStatus, rhs: GeoStatus) -> Bool {
+        lhs.label < rhs.label
+    }
 
     var label: String {
         switch self {
@@ -44,6 +48,9 @@ struct Site: Identifiable, Hashable {
     var locationLabel: String {
         [city, country].filter { !$0.isEmpty }.joined(separator: ", ")
     }
+
+    var latitudeSort: Double { latitude ?? .infinity }
+    var longitudeSort: Double { longitude ?? .infinity }
 }
 
 /// A replication relationship: data center -> DR site.
